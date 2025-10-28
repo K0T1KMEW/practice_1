@@ -2,6 +2,14 @@ from fastapi import FastAPI, HTTPException
 from db_utilities import DataBaseManager, News
 from logger_config import setup_logger
 
+from pydantic import BaseModel
+from typing import Any, Optional
+
+class DefaultResponce(BaseModel):
+    error: bool
+    message: str
+    payload: Optional[Any] = None
+
 logger = setup_logger(__name__)
 
 app = FastAPI(title="News Parser API")
@@ -25,7 +33,7 @@ async def get_news_by_id(news_id: int):
         response = {
             "id": news_item.id,
             "title": news_item.title,
-            "time": news_item.time,
+            "time": news_item.time.isoformat() if news_item.time else None,
             "link": news_item.link,
             "content": news_item.content,
             "created_at": news_item.created_at.isoformat() if news_item.created_at else None
@@ -34,10 +42,12 @@ async def get_news_by_id(news_id: int):
         logger.info(f"Успешно возвращена новость с ID: {news_id}")
         return response
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Ошибка при получении новости {news_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        return DefaultResponce(
+            error=True
+            message="Ошибка сервера"
+            payload=None
+        )
     finally:
         await db_manager.close_connection()

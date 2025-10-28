@@ -20,7 +20,7 @@ class News(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(Text, nullable=False)
-    time = Column(String(50), nullable=False)
+    time = Column(DateTime, nullable=False)
     link = Column(String(500), unique=True, nullable=False)
     content = Column(Text)
     created_at = Column(DateTime, default=datetime.now)

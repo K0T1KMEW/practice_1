@@ -19,15 +19,22 @@ class NewsParser:
         return [now.strftime("%d.%m.%Y"), yesterday.strftime("%d.%m.%Y")]
 
     @staticmethod
-    def is_within_24_hours(news_time_str, news_date_str):
+    def is_within_24_hours(news_datetime):
         try:
-            news_datetime = datetime.strptime(
-                f"{news_date_str} {news_time_str}", 
-                "%d.%m.%Y %H:%M"
-            )
             return datetime.now() - news_datetime <= timedelta(hours=24)
         except Exception:
             return False
+        
+    @staticmethod
+    def parse_news_datetime(news_time_str, news_date_str):
+        try:
+            return datetime.strptime(
+                f"{news_date_str} {news_time_str}", 
+                "%d.%m.%Y %H:%M"
+            )
+        except Exception as e:
+            logger.error(f"Error parsing datetime {news_date_str} {news_time_str}: {e}")
+            return None
 
     async def fetch_page(self, session, date_str):
         try:
@@ -61,17 +68,19 @@ class NewsParser:
                 else:
                     formatted_time = news_time
                 
-                if self.is_within_24_hours(formatted_time, page_date):
+                news_datetime = self.parse_news_datetime(formatted_time, page_date)
+                
+                if news_datetime and self.is_within_24_hours(news_datetime):
                     link = f"https://uralpolit.ru{href}" if href.startswith('/') else href
                         
                     news_dict[link] = {
                         'title': title_element.get_text(strip=True),
-                        'time': formatted_time,
+                        'time': news_datetime,
                         'content': ''
                     }
         
         return news_dict
-
+    
     async def parse_news_content(self, session, link):
         try:
             async with session.get(link, timeout=self.timeout) as response:
@@ -83,9 +92,19 @@ class NewsParser:
             content_element = soup.find('div', itemprop='articleBody')
             
             if content_element:
-                paragraphs = content_element.find_all('p')
-                content = ' '.join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+                content_parts = []
                 
+                for element in content_element.children:
+                    if element.name == 'p':
+                        paragraph_text = self._process_element_with_links(element)
+                        if paragraph_text.strip():
+                            content_parts.append(paragraph_text)
+                    elif element.name in ['div', 'span'] and element.get_text(strip=True):
+                        element_text = self._process_element_with_links(element)
+                        if element_text.strip():
+                            content_parts.append(element_text)
+                
+                content = ' '.join(content_parts)
                 content = re.sub(r'\s+', ' ', content).strip()
                 return content
             return ""
@@ -93,6 +112,52 @@ class NewsParser:
         except Exception as e:
             logger.error(f"Content parsing error for {link}: {e}")
             return ""
+    
+    def _process_element_with_links(self, element):
+        text_parts = []
+        
+        for child in element.children:
+            if isinstance(child, str):
+                text_parts.append(child)
+            elif child.name == 'a':
+                link_text = child.get_text(strip=True)
+                if link_text:
+                    if text_parts and not text_parts[-1].endswith(' '):
+                        text_parts.append(' ')
+                    text_parts.append(link_text)
+                    text_parts.append(' ')
+            elif hasattr(child, 'get_text'):
+                nested_text = self._process_element_with_links(child)
+                if nested_text:
+                    text_parts.append(nested_text)
+        
+        result = ''.join(text_parts)
+        result = re.sub(r'\s+', ' ', result).strip()
+        return result
+
+    # async def parse_news_content(self, session, link):
+    #     try:
+    #         async with session.get(link, timeout=self.timeout) as response:
+    #             response.raise_for_status()
+    #             html_content = await response.text()
+            
+    #         soup = BeautifulSoup(html_content, "html.parser")
+            
+    #         content_element = soup.find('div', itemprop='articleBody')
+            
+    #         if content_element:
+    #             paragraphs = content_element.find_all('p')
+    #             content = ' '.join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+                
+    #             content = re.sub(r'\s+', ' ', content).strip()
+    #             return content
+    #         return ""
+            
+    #     except Exception as e:
+    #         logger.error(f"Content parsing error for {link}: {e}")
+    #         return ""
+
+    
 
     async def enrich_news_with_content(self, session, news_dict):
         tasks = []
