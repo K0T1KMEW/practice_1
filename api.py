@@ -5,7 +5,7 @@ from logger_config import setup_logger
 from pydantic import BaseModel
 from typing import Any, Optional
 
-class DefaultResponce(BaseModel):
+class DefaultResponse(BaseModel):
     error: bool
     message: str
     payload: Optional[Any] = None
@@ -44,7 +44,7 @@ async def get_news_by_id(news_id: int):
         
     except Exception as e:
         logger.error(f"Ошибка при получении новости {news_id}: {e}")
-        return DefaultResponce(
+        return DefaultResponse(
             error=True
             message="Ошибка сервера"
             payload=None
